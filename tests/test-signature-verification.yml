@@ -1,0 +1,37 @@
+name: Test default GPG signature verification
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure gpg available and clean output
+        run: |
+          rm -f "$GITHUB_WORKSPACE/output.properties"
+          if ! command -v gpg >/dev/null 2>&1; then
+            sudo apt-get update -y >/dev/null 2>&1 || apt-get update -y >/dev/null 2>&1 || true
+            sudo apt-get install -y gnupg dirmngr >/dev/null 2>&1 || apt-get install -y gnupg dirmngr >/dev/null 2>&1 || true
+          fi
+          gpg --version | head -1 || true
+      - id: action
+        uses: .
+        env:
+          SONAR_HOST_URL: http://not_actually_used
+          SONAR_SCANNER_JSON_PARAMS: '{"sonar.scanner.internal.dumpToFile": "./output.properties"}'
+      - name: Assert scanner ran after signature verification
+        run: |
+          if [ ! -f ./output.properties ]; then
+            echo "FAIL: output.properties not produced"
+            exit 1
+          fi
+          cat ./output.properties
+          if ! grep -E '^sun.java.command=' ./output.properties | grep -qF -- '-Dsonar.projectBaseDir\=.'; then
+            echo "FAIL: expected -Dsonar.projectBaseDir=. in scanner command line"
+            exit 1
+          fi
+          if ! grep -qE '^sonar.projectBaseDir=.+' ./output.properties; then
+            echo "FAIL: sonar.projectBaseDir missing"
+            exit 1
+          fi
+          echo "PASS"

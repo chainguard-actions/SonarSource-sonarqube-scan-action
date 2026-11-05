@@ -1,0 +1,46 @@
+name: Test basic usage (no inputs)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Clean previous output
+        run: rm -f "$GITHUB_WORKSPACE/output.properties"
+      - id: action
+        uses: .
+        with:
+          skipSignatureVerification: "true"
+        env:
+          SONAR_HOST_URL: http://not_actually_used
+          SONAR_SCANNER_JSON_PARAMS: '{"sonar.scanner.internal.dumpToFile": "./output.properties"}'
+      - name: Assert scanner dumped properties with default projectBaseDir
+        run: |
+          if [ ! -f ./output.properties ]; then
+            echo "FAIL: output.properties not produced"
+            exit 1
+          fi
+          cat ./output.properties
+          # The action passes -Dsonar.projectBaseDir=. on the command line
+          if ! grep -E '^sun.java.command=' ./output.properties | grep -qF -- '-Dsonar.projectBaseDir\=.'; then
+            echo "FAIL: expected -Dsonar.projectBaseDir=. in scanner command line"
+            exit 1
+          fi
+          # The scanner resolves "." to the working directory
+          BASEDIR="$(grep -E '^sonar.projectBaseDir=' ./output.properties | head -1 | cut -d= -f2-)"
+          USERDIR="$(grep -E '^user.dir=' ./output.properties | head -1 | cut -d= -f2-)"
+          echo "projectBaseDir: $BASEDIR"
+          echo "user.dir: $USERDIR"
+          if [ -z "$BASEDIR" ] || [ "$BASEDIR" != "$USERDIR" ]; then
+            echo "FAIL: expected resolved projectBaseDir to equal user.dir"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert sonar-scanner is on PATH
+        run: |
+          if ! command -v sonar-scanner >/dev/null 2>&1; then
+            echo "FAIL: sonar-scanner not found in PATH"
+            exit 1
+          fi
+          echo "PASS: $(command -v sonar-scanner)"

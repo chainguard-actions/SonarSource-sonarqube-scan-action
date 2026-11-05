@@ -1,0 +1,29 @@
+name: Test args input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Clean previous output
+        run: rm -f "$GITHUB_WORKSPACE/output.properties"
+      - id: action
+        uses: .
+        with:
+          skipSignatureVerification: "true"
+          args: -Dsonar.someArg=aValue -Dsonar.anotherArgWithSpaces="Another Value" -Dsonar.argWithSingleQuotes='Another Value'
+        env:
+          SONAR_HOST_URL: http://not_actually_used
+          SONAR_SCANNER_JSON_PARAMS: '{"sonar.scanner.internal.dumpToFile": "./output.properties"}'
+      - name: Assert args passed to scanner
+        run: |
+          if [ ! -f ./output.properties ]; then
+            echo "FAIL: output.properties not produced"
+            exit 1
+          fi
+          cat ./output.properties
+          grep -qF 'sonar.someArg=aValue' ./output.properties || { echo "FAIL: someArg missing"; exit 1; }
+          grep -qF 'sonar.anotherArgWithSpaces="Another Value"' ./output.properties || { echo "FAIL: anotherArgWithSpaces missing"; exit 1; }
+          grep -qF "sonar.argWithSingleQuotes='Another Value'" ./output.properties || { echo "FAIL: argWithSingleQuotes missing"; exit 1; }
+          echo "PASS"

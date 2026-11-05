@@ -1,0 +1,30 @@
+name: Test preset SONAR_HOST_URL is preserved
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Explicitly set host (www alias of SonarCloud also serves build-wrapper)
+      SONAR_HOST_URL: https://sonarcloud.io/
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          cache-binaries: 'false'
+          installation-path: host-url-tools
+      - name: Assert SONAR_HOST_URL kept and binaries installed
+        env:
+          SCANNER: ${{ steps.action.outputs.sonar-scanner-binary }}
+          WRAPPER: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "SONAR_HOST_URL=$SONAR_HOST_URL"
+          if [ "$SONAR_HOST_URL" != "https://sonarcloud.io/" ]; then
+            echo "FAIL: preset SONAR_HOST_URL was overwritten"; exit 1
+          fi
+          for f in "$SCANNER" "$WRAPPER"; do
+            echo "binary: $f"
+            if [ ! -x "$f" ]; then echo "FAIL: '$f' not executable"; exit 1; fi
+          done
+          echo "PASS"

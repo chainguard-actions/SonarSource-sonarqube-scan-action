@@ -1,0 +1,33 @@
+name: Test args input does not execute shell commands
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Clean previous output
+        run: rm -f "$GITHUB_WORKSPACE/output.properties" /tmp/injected-marker
+      - id: action
+        uses: .
+        with:
+          skipSignatureVerification: "true"
+          args: -Dsonar.arg1="$(whoami)" -Dsonar.arg2="value; touch /tmp/injected-marker" -Dsonar.arg3="`id`"
+        env:
+          SONAR_HOST_URL: http://not_actually_used
+          SONAR_SCANNER_JSON_PARAMS: '{"sonar.scanner.internal.dumpToFile": "./output.properties"}'
+      - name: Assert commands were passed literally and not executed
+        run: |
+          if [ ! -f ./output.properties ]; then
+            echo "FAIL: output.properties not produced"
+            exit 1
+          fi
+          cat ./output.properties
+          grep -qF 'sonar.arg1="$(whoami)"' ./output.properties || { echo "FAIL: arg1 not literal"; exit 1; }
+          grep -qF 'sonar.arg2="value; touch /tmp/injected-marker"' ./output.properties || { echo "FAIL: arg2 not literal"; exit 1; }
+          grep -qF 'sonar.arg3="`id`"' ./output.properties || { echo "FAIL: arg3 not literal"; exit 1; }
+          if [ -e /tmp/injected-marker ]; then
+            echo "FAIL: injected command was executed"
+            exit 1
+          fi
+          echo "PASS"

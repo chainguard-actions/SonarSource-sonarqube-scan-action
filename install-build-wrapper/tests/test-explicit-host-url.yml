@@ -1,0 +1,22 @@
+name: Test install with explicit SONAR_HOST_URL
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+      - name: Assert binary installed
+        env:
+          ACTUAL: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ] || [ ! -x "$ACTUAL" ]; then
+            echo "FAIL: expected an executable build wrapper binary"
+            exit 1
+          fi
+          echo "PASS"

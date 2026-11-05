@@ -1,0 +1,32 @@
+name: Test projectBaseDir input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare base dir
+        run: |
+          rm -f "$GITHUB_WORKSPACE/output.properties"
+          mkdir -p ./baseDir
+      - id: action
+        uses: .
+        with:
+          skipSignatureVerification: "true"
+          projectBaseDir: ./baseDir
+        env:
+          SONAR_HOST_URL: http://not_actually_used
+          SONAR_SCANNER_JSON_PARAMS: '{"sonar.scanner.internal.dumpToFile": "./output.properties"}'
+      - name: Assert projectBaseDir passed to scanner
+        run: |
+          if [ ! -f ./output.properties ]; then
+            echo "FAIL: output.properties not produced"
+            exit 1
+          fi
+          cat ./output.properties
+          if ! grep -qE '^sonar.projectBaseDir=.*/?baseDir$' ./output.properties; then
+            echo "FAIL: expected sonar.projectBaseDir ending in baseDir"
+            exit 1
+          fi
+          echo "PASS"
