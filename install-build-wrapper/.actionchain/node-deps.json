@@ -1,0 +1,10 @@
+{
+  "status": "unbundlable",
+  "entries": [
+    {
+      "path": "../dist/install-build-wrapper.js",
+      "status": "unbundlable",
+      "reason": "entry path is absolute or escapes the action root"
+    }
+  ]
+}

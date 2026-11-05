@@ -1,0 +1,35 @@
+name: Test custom installation path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          installation-path: custom-sonar-tools
+          cache-binaries: 'false'
+      - name: Assert binaries installed under custom path
+        env:
+          SCANNER: ${{ steps.action.outputs.sonar-scanner-binary }}
+          WRAPPER: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "sonar-scanner-binary: $SCANNER"
+          echo "build-wrapper-binary: $WRAPPER"
+          if [ ! -d "$GITHUB_WORKSPACE/custom-sonar-tools" ]; then
+            echo "FAIL: custom installation directory not created"
+            exit 1
+          fi
+          for b in "$SCANNER" "$WRAPPER"; do
+            if [ -z "$b" ] || [ ! -x "$b" ]; then
+              echo "FAIL: binary '$b' missing or not executable"
+              exit 1
+            fi
+            case "$b" in
+              */custom-sonar-tools/*) ;;
+              *) echo "FAIL: '$b' not under custom-sonar-tools"; exit 1 ;;
+            esac
+          done
+          echo "PASS"

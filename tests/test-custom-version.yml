@@ -1,0 +1,40 @@
+name: Test custom scannerVersion with trailing-slash binaries URL
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          scannerVersion: 7.1.0.4889
+          scannerBinariesUrl: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/
+          skipSignatureVerification: "true"
+          args: --version
+      - name: Assert action succeeded
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert requested scanner version is installed
+        run: |
+          if ! command -v sonar-scanner >/dev/null 2>&1; then
+            echo "FAIL: sonar-scanner not found on PATH"
+            exit 1
+          fi
+          SCANNER="$(command -v sonar-scanner)"
+          echo "sonar-scanner at: $SCANNER"
+          OUT="$(sonar-scanner --version 2>&1 || true)"
+          echo "$OUT"
+          if ! echo "$SCANNER $OUT" | grep -q "7.1.0"; then
+            echo "FAIL: expected version 7.1.0.4889"
+            exit 1
+          fi
+          echo "PASS"
