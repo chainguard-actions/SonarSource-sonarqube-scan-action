@@ -1,0 +1,23 @@
+name: Test custom scannerVersion
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          args: --version
+          scannerVersion: 7.1.0.4889
+          skipSignatureVerification: "true"
+      - name: Assert requested scanner version installed
+        run: |
+          OUT="$(sonar-scanner --version 2>&1)"
+          echo "$OUT"
+          if ! echo "$OUT" | grep -q "7.1.0.4889"; then
+            echo "FAIL: expected scanner version 7.1.0.4889"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,25 @@
+name: Test install with explicit SONAR_HOST_URL
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+      - name: Assert build-wrapper-binary exists and is executable
+        env:
+          ACTUAL: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ] || [ ! -f "$ACTUAL" ] || [ ! -x "$ACTUAL" ]; then
+            echo "FAIL: expected an existing executable build-wrapper binary"
+            exit 1
+          fi
+          case "$(basename "$ACTUAL")" in
+            build-wrapper*) echo "PASS" ;;
+            *) echo "FAIL: unexpected binary name"; exit 1 ;;
+          esac

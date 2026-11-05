@@ -1,0 +1,35 @@
+name: Test custom installation path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure target dir does not exist
+        run: rm -rf "$GITHUB_WORKSPACE/custom-sonar-tools"
+      - id: action
+        uses: .
+        with:
+          installation-path: custom-sonar-tools/nested
+          cache-binaries: 'false'
+      - name: Assert binaries installed under custom path
+        env:
+          SCANNER: ${{ steps.action.outputs.sonar-scanner-binary }}
+          WRAPPER: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "sonar-scanner-binary: $SCANNER"
+          echo "build-wrapper-binary: $WRAPPER"
+          EXPECTED_PREFIX="$(realpath "$GITHUB_WORKSPACE/custom-sonar-tools/nested")"
+          echo "expected prefix: $EXPECTED_PREFIX"
+          if [ ! -d "$EXPECTED_PREFIX" ]; then
+            echo "FAIL: installation path was not created"
+            exit 1
+          fi
+          case "$SCANNER" in "$EXPECTED_PREFIX"/*) ;; *) echo "FAIL: scanner not under custom path"; exit 1 ;; esac
+          case "$WRAPPER" in "$EXPECTED_PREFIX"/*) ;; *) echo "FAIL: wrapper not under custom path"; exit 1 ;; esac
+          if [ ! -x "$SCANNER" ] || [ ! -x "$WRAPPER" ]; then
+            echo "FAIL: binaries missing or not executable"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,159 @@
+name: 'SonarQube Scan for C and C++'
+description: 'Scan your C and C++ code with SonarQube to detect bugs, vulnerabilities and code smells.'
+branding:
+  icon: check
+  color: green
+inputs:
+  installation-path:
+    description: 'Directory where the sonar-scanner and build wrapper will be installed. Created if does not exists.'
+    required: false
+    default: '.sonar'
+  cache-binaries:
+    description: 'Controls if installed binaries are cached using GitHub cache.'
+    required: false
+    default: 'true'
+
+outputs:
+  sonar-scanner-binary:
+    description: "Absolute path to sonar-scanner binary."
+    value: ${{ steps.setup-outputs.outputs.sonar-scanner-binary }}
+  build-wrapper-binary:
+    description: "Absolute path to build-wrapper binary."
+    value: ${{ steps.setup-outputs.outputs.build-wrapper-binary }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    # install packaged required for greadlink and sha256sum command on macOS
+    - name: Install required packages for macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install coreutils
+
+    - name: Set SONAR_HOST_URL to 'https://sonarcloud.io'
+      if: env.SONAR_HOST_URL == ''
+      shell: bash
+      run: |
+        echo "Setting SONAR_HOST_URL to 'https://sonarcloud.io'"
+        echo "SONAR_HOST_URL=https://sonarcloud.io" >> $GITHUB_ENV
+
+    - name: Verify and create installation path
+      shell: bash
+      env:
+        INSTALL_PATH: ${{ inputs.installation-path }}
+      run: ${GITHUB_ACTION_PATH}/../scripts/create_install_path.sh
+
+    - name: Set version of sonar-scanner
+      id: sonar-scanner-version
+      shell: bash
+      run: cat ${GITHUB_ACTION_PATH}/../sonar-scanner-version >> $GITHUB_OUTPUT
+
+    - name: Configure paths
+      id: configure_paths
+      shell: bash
+      env:
+        OS: ${{ runner.os }}
+        ARCH: ${{ runner.arch }}
+        INSTALL_PATH: ${{ inputs.installation-path }}
+        SONAR_SCANNER_VERSION: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-version }}
+        SONAR_SCANNER_URL_WINDOWS_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-url-windows-x64 }}
+        SONAR_SCANNER_SHA_WINDOWS_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-sha-windows-x64 }}
+        SONAR_SCANNER_URL_LINUX_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-url-linux-x64 }}
+        SONAR_SCANNER_SHA_LINUX_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-sha-linux-x64 }}
+        SONAR_SCANNER_URL_LINUX_AARCH64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-url-linux-aarch64 }}
+        SONAR_SCANNER_SHA_LINUX_AARCH64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-sha-linux-aarch64 }}
+        SONAR_SCANNER_URL_MACOSX_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-url-macosx-x64 }}
+        SONAR_SCANNER_SHA_MACOSX_X64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-sha-macosx-x64 }}
+        SONAR_SCANNER_URL_MACOSX_AARCH64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-url-macosx-aarch64 }}
+        SONAR_SCANNER_SHA_MACOSX_AARCH64: ${{ steps.sonar-scanner-version.outputs.sonar-scanner-sha-macosx-aarch64 }}
+      run: |
+        INSTALL_PATH="$(printf '%s' "$INSTALL_PATH" | tr -d '\n\r')"
+        export INSTALL_PATH
+        "${GITHUB_ACTION_PATH}/../scripts/configure_paths.sh" >> "$GITHUB_OUTPUT"
+
+    - name: Cache sonar-scanner installation
+      id: cache-sonar-tools
+      if: inputs.cache-binaries == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      env:
+        # The default value is 60mins. Reaching timeout is treated the same as a cache miss.
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
+      with:
+        key: sonar-scanner-${{ runner.os }}-${{ runner.arch }}-${{ steps.sonar-scanner-version.outputs.sonar-scanner-version }}
+        path: ${{ steps.configure_paths.outputs.sonar-scanner-dir }}
+
+    - name: Download and install sonar-scanner
+      if: steps.cache-sonar-tools.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        DOWNLOAD_URL: ${{ steps.configure_paths.outputs.sonar-scanner-url }}
+        EXPECTED_SHA: ${{ steps.configure_paths.outputs.sonar-scanner-sha }}
+        INSTALL_PATH: ${{ inputs.installation-path }}
+        TMP_ZIP_PATH: ${{ runner.temp }}/sonar-scanner.zip
+      run: ${GITHUB_ACTION_PATH}/../scripts/download.sh -v
+
+    - name: Add the custom root certificate to java certificate store
+      shell: bash
+      run: ${GITHUB_ACTION_PATH}/../scripts/cert.sh
+
+    - name: Download and install build-wrapper
+      shell: bash
+      env:
+        DOWNLOAD_URL: ${{ steps.configure_paths.outputs.build-wrapper-url }}
+        INSTALL_PATH: ${{ inputs.installation-path }}
+        TMP_ZIP_PATH: ${{ runner.temp }}/build-wrapper.zip
+      run: ${GITHUB_ACTION_PATH}/../scripts/download.sh
+
+    - name: Setup action outputs
+      id: setup-outputs
+      shell: bash
+      env:
+        SONAR_SCANNER_DIR: ${{ steps.configure_paths.outputs.sonar-scanner-dir }}
+        SONAR_SCANNER_BIN: ${{ steps.configure_paths.outputs.sonar-scanner-bin }}
+        BUILD_WRAPPER_DIR: ${{ steps.configure_paths.outputs.build-wrapper-dir }}
+        BUILD_WRAPPER_BIN: ${{ steps.configure_paths.outputs.build-wrapper-bin }}
+      run: |
+        source ${GITHUB_ACTION_PATH}/../scripts/utils.sh
+
+        echo "::group::Action outputs"
+        SAFE_SONAR_HOST_URL="$(printf '%s' "${SONAR_HOST_URL}" | tr -d '\n\r')"
+        echo "SONAR_HOST_URL=${SAFE_SONAR_HOST_URL}" >> "$GITHUB_ENV"
+        echo "'SONAR_HOST_URL' environment variable set to '${SAFE_SONAR_HOST_URL}'"
+
+        SONAR_SCANNER_BIN_DIR=$(realpath "${SONAR_SCANNER_DIR}/bin")
+        SONAR_SCANNER_BIN_DIR="$(printf '%s' "${SONAR_SCANNER_BIN_DIR}" | tr -d '\n\r')"
+        echo "${SONAR_SCANNER_BIN_DIR}" >> "$GITHUB_PATH"
+        echo "'${SONAR_SCANNER_BIN_DIR}' added to the path"
+
+        SONAR_SCANNER_BIN=$(realpath "${SONAR_SCANNER_BIN}")
+        SONAR_SCANNER_BIN="$(printf '%s' "${SONAR_SCANNER_BIN}" | tr -d '\n\r')"
+        echo "sonar-scanner-binary=${SONAR_SCANNER_BIN}" >> "$GITHUB_OUTPUT"
+        echo "'sonar-scanner-binary' output set to '${SONAR_SCANNER_BIN}'"
+
+        BUILD_WRAPPER_BIN_DIR=$(realpath "${BUILD_WRAPPER_DIR}")
+        BUILD_WRAPPER_BIN_DIR="$(printf '%s' "${BUILD_WRAPPER_BIN_DIR}" | tr -d '\n\r')"
+        echo "${BUILD_WRAPPER_BIN_DIR}" >> "$GITHUB_PATH"
+        echo "'${BUILD_WRAPPER_BIN_DIR}' added to the path"
+
+        BUILD_WRAPPER_BIN=$(realpath "${BUILD_WRAPPER_BIN}")
+        BUILD_WRAPPER_BIN="$(printf '%s' "${BUILD_WRAPPER_BIN}" | tr -d '\n\r')"
+        echo "build-wrapper-binary=${BUILD_WRAPPER_BIN}" >> "$GITHUB_OUTPUT"
+        echo "'build-wrapper-binary' output set to '${BUILD_WRAPPER_BIN}'"
+        echo "::endgroup::"

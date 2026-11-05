@@ -1,0 +1,42 @@
+name: Test explicit SONAR_HOST_URL is preserved
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Trailing slash makes this distinguishable from the action's default
+      # value (https://sonarcloud.io), so we can tell it was not overridden.
+      SONAR_HOST_URL: https://sonarcloud.io/
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          cache-binaries: 'false'
+          installation-path: .sonar-explicit
+      - name: Assert host URL kept and outputs set
+        env:
+          SCANNER: ${{ steps.action.outputs.sonar-scanner-binary }}
+          WRAPPER: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "SONAR_HOST_URL=$SONAR_HOST_URL"
+          echo "scanner: $SCANNER"
+          echo "wrapper: $WRAPPER"
+          if [ "$SONAR_HOST_URL" != "https://sonarcloud.io/" ]; then
+            echo "FAIL: SONAR_HOST_URL was overridden (expected 'https://sonarcloud.io/')"
+            exit 1
+          fi
+          if [ ! -x "$SCANNER" ] || [ ! -x "$WRAPPER" ]; then
+            echo "FAIL: binaries missing"
+            exit 1
+          fi
+          case "$SCANNER" in
+            */.sonar-explicit/*) ;;
+            *) echo "FAIL: scanner not under .sonar-explicit"; exit 1 ;;
+          esac
+          case "$WRAPPER" in
+            */.sonar-explicit/*) ;;
+            *) echo "FAIL: wrapper not under .sonar-explicit"; exit 1 ;;
+          esac
+          echo "PASS"
