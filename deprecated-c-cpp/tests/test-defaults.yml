@@ -1,0 +1,30 @@
+name: Test default inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+      - name: Assert outputs under default .sonar path
+        env:
+          SCANNER: ${{ steps.action.outputs.sonar-scanner-binary }}
+          WRAPPER: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "sonar-scanner-binary: $SCANNER"
+          echo "build-wrapper-binary: $WRAPPER"
+          for b in "$SCANNER" "$WRAPPER"; do
+            if [ -z "$b" ]; then echo "FAIL: empty output"; exit 1; fi
+            case "$b" in
+              *"/.sonar/"*) ;;
+              *) echo "FAIL: '$b' not under default .sonar path"; exit 1 ;;
+            esac
+            if [ ! -x "$b" ]; then echo "FAIL: '$b' not executable"; exit 1; fi
+          done
+          if [ "$SONAR_HOST_URL" != "https://sonarcloud.io" ]; then
+            echo "FAIL: SONAR_HOST_URL='$SONAR_HOST_URL'"; exit 1
+          fi
+          command -v "$(basename "$WRAPPER")" || { echo "FAIL: build-wrapper not on PATH"; exit 1; }
+          echo "PASS"

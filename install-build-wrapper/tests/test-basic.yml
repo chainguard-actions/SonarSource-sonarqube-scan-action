@@ -1,0 +1,46 @@
+name: Test basic build wrapper install
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+      - name: Assert build-wrapper-binary output points to an executable
+        env:
+          ACTUAL: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: output build-wrapper-binary is empty"
+            exit 1
+          fi
+          case "$ACTUAL" in
+            /*) ;;
+            *) echo "FAIL: expected an absolute path"; exit 1 ;;
+          esac
+          case "$(basename "$ACTUAL")" in
+            build-wrapper-linux-*) ;;
+            *) echo "FAIL: unexpected binary name"; exit 1 ;;
+          esac
+          if [ ! -f "$ACTUAL" ]; then
+            echo "FAIL: binary file does not exist"
+            exit 1
+          fi
+          if [ ! -x "$ACTUAL" ]; then
+            echo "FAIL: binary is not executable"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert build wrapper directory added to PATH
+        env:
+          ACTUAL: ${{ steps.action.outputs.build-wrapper-binary }}
+        run: |
+          DIR="$(dirname "$ACTUAL")"
+          echo "PATH: $PATH"
+          case ":$PATH:" in
+            *":$DIR:"*) echo "PASS: $DIR in PATH" ;;
+            *) echo "FAIL: $DIR not in PATH"; exit 1 ;;
+          esac
