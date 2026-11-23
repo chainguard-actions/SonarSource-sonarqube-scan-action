@@ -1,0 +1,34 @@
+name: Test install scanner and print version (signature verification skipped)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          args: -v
+          skipSignatureVerification: "true"
+      - name: Assert action succeeded
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert sonar-scanner is on PATH with default version
+        run: |
+          set -e
+          which sonar-scanner || { echo "FAIL: sonar-scanner not on PATH"; exit 1; }
+          OUT="$(sonar-scanner -v 2>&1)"
+          echo "$OUT"
+          if ! echo "$OUT" | grep -q "8.5.0.16571"; then
+            echo "FAIL: expected scanner version 8.5.0.16571"
+            exit 1
+          fi
+          echo "PASS"
